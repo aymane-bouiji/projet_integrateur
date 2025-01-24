@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: check-volume-job
+spec:
+  template:
+    spec:
+      containers:
+      - name: check-container
+        image: busybox
+        command: ['sh', '-c', 'ls -l /shared_volume']
+        volumeMounts:
+        - name: shared-volume
+          mountPath: /shared_volume
+      volumes:
+      - name: shared-volume
+        persistentVolumeClaim:
+          claimName: shared-volume-claim
+      restartPolicy: Never
+  backoffLimit: 4

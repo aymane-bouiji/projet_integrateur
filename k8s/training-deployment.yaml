@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: training-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: training
+  template:
+    metadata:
+      labels:
+        app: training
+    spec:
+      containers:
+      - name: training-container
+        image: ayach2024/maj-server:latest
+        ports:
+        - containerPort: 5001
+        volumeMounts:
+        - name: shared-volume
+          mountPath: /shared_volume
+      volumes:
+      - name: shared-volume
+        persistentVolumeClaim:
+          claimName: shared-volume-claim

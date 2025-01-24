@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prediction-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prediction
+  template:
+    metadata:
+      labels:
+        app: prediction
+    spec:
+      containers:
+      - name: prediction-container
+        image: ayach2024/prediction-server:latest
+        ports:
+        - containerPort: 5000
+        volumeMounts:
+        - name: shared-volume
+          mountPath: /shared_volume
+      volumes:
+      - name: shared-volume
+        persistentVolumeClaim:
+          claimName: shared-volume-claim
