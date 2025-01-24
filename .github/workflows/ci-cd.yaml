@@ -55,6 +55,10 @@ jobs:
           echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > kubeconfig.yaml
           export KUBECONFIG=kubeconfig.yaml
 
+      - name: Test Kubernetes connection
+        run: |
+          kubectl get nodes
+
       - name: Deploy to Kubernetes
         run: |
           kubectl apply -f k8s/persistent-volume.yaml
