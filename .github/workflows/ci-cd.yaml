@@ -3,10 +3,10 @@ name: CI/CD Pipeline
 on:
   push:
     branches:
-      - main  # Trigger on pushes to the main branch
+      - main
   pull_request:
     branches:
-      - main  # Trigger on pull requests to the main branch
+      - main
 
 jobs:
   build-and-push:
@@ -27,7 +27,7 @@ jobs:
       - name: Build and push prediction-server image
         uses: docker/build-push-action@v4
         with:
-          context: ./predicition_server/server2
+          context: ./prediction_server/server2  # Fixed typo "predicition" → "prediction"
           push: true
           tags: ayach2024/prediction-server:latest
 
@@ -52,12 +52,12 @@ jobs:
 
       - name: Configure Kubernetes cluster
         run: |
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > kubeconfig.yaml
-          export KUBECONFIG=kubeconfig.yaml
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > ~/.kube/config  # Save to standard location
+          chmod 600 ~/.kube/config  # Secure permissions
 
       - name: Test Kubernetes connection
-        run: |
-          kubectl get nodes
+        run: kubectl get nodes  # Verify cluster access
 
       - name: Deploy to Kubernetes
         run: |
