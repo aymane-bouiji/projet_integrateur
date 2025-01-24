@@ -29,14 +29,14 @@ jobs:
         with:
           context: ./predicition_server/server2
           push: true
-          tags: ${{ secrets.DOCKER_HUB_REPO }}:latest
+          tags: ayach2024/prediction-server:latest
 
-      - name: Build and push training-server image
+      - name: Build and push maj-server image
         uses: docker/build-push-action@v4
         with:
           context: ./training_server
           push: true
-          tags: ${{ secrets.DOCKER_HUB_REPO }}-training:latest
+          tags: ayach2024/maj-server:latest
 
   deploy-to-k8s:
     runs-on: ubuntu-latest
