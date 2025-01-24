@@ -27,7 +27,7 @@ jobs:
       - name: Build and push prediction-server image
         uses: docker/build-push-action@v4
         with:
-          context: ./prediction_server/server2  # Fixed typo "predicition" → "prediction"
+          context: ./predicition_server/server2  # Typo retained as requested
           push: true
           tags: ayach2024/prediction-server:latest
 
@@ -53,11 +53,11 @@ jobs:
       - name: Configure Kubernetes cluster
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > ~/.kube/config  # Save to standard location
-          chmod 600 ~/.kube/config  # Secure permissions
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > ~/.kube/config  # Critical fix for kubeconfig
+          chmod 600 ~/.kube/config  # Security fix (retained)
 
       - name: Test Kubernetes connection
-        run: kubectl get nodes  # Verify cluster access
+        run: kubectl get nodes
 
       - name: Deploy to Kubernetes
         run: |
