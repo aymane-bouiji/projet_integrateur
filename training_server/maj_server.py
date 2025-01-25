@@ -17,7 +17,7 @@ VOLUME_PATH = "/shared_volume"
 CSV_FILE = os.path.join(VOLUME_PATH, 'messages.csv')
 
 # Threshold to trigger model training
-TRAINING_THRESHOLD = 100  # Number of messages required for training
+TRAINING_THRESHOLD = 2  # Number of messages required for training
 
 # Route to receive new messages and labels
 @app.route('/add_messages', methods=['POST'])
