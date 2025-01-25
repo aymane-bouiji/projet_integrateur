@@ -37,6 +37,7 @@ jobs:
           context: ./training_server
           push: true
           tags: ayach2024/maj-server:latest
+          imagePullPolicy: Always
 
   deploy-to-k8s:
     runs-on: self-hosted  # Uses your OpenStack runner
