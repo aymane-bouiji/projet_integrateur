@@ -3,10 +3,10 @@ name: CI/CD Pipeline
 on:
   push:
     branches:
-      - main  # Trigger on pushes to the main branch
+      - main
   pull_request:
     branches:
-      - main  # Trigger on pull requests to the main branch
+      - main
 
 jobs:
   build-and-push:
@@ -27,7 +27,7 @@ jobs:
       - name: Build and push prediction-server image
         uses: docker/build-push-action@v4
         with:
-          context: ./predicition_server/server2
+          context: ./predicition_server/server2  # Keep the typo as-is
           push: true
           tags: ayach2024/prediction-server:latest
 
@@ -39,25 +39,17 @@ jobs:
           tags: ayach2024/maj-server:latest
 
   deploy-to-k8s:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted  # Uses your OpenStack runner
     needs: build-and-push
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
-
-      - name: Configure Kubernetes cluster
+      - name: Configure Kubernetes access
         run: |
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > kubeconfig.yaml
-          export KUBECONFIG=kubeconfig.yaml
-
-      - name: Test Kubernetes connection
-        run: |
-          kubectl get nodes
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > ~/.kube/config
+          chmod 600 ~/.kube/config
 
       - name: Deploy to Kubernetes
         run: |
