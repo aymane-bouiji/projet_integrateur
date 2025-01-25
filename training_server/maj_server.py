@@ -6,7 +6,7 @@ import subprocess
 app = Flask(__name__)
 VOLUME_PATH = "/shared_volume"
 CSV_FILE = os.path.join(VOLUME_PATH, 'messages.csv')
-TRAINING_THRESHOLD = 30  # Testing threshold
+TRAINING_THRESHOLD = 30  # Adjust threshold for testing
 
 @app.route('/add_messages', methods=['POST'])
 def add_messages():
@@ -28,7 +28,6 @@ def add_messages():
     if updated_data.shape[0] >= TRAINING_THRESHOLD:
         updated_data.to_csv(CSV_FILE, index=False)
         try:
-            # Call maj_modele.py instead of train_model.py
             subprocess.run(['python3', 'maj_modele.py'], check=True)
             pd.DataFrame(columns=['MainText', 'label']).to_csv(CSV_FILE, index=False)
             return jsonify({
