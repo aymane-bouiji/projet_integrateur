@@ -27,7 +27,7 @@ jobs:
       - name: Build and push prediction-server image
         uses: docker/build-push-action@v4
         with:
-          context: ./predicition_server/server2  # Keep the typo as-is
+          context: ./predicition_server/server2  # Preserve typo
           push: true
           tags: ayach2024/prediction-server:latest
 
@@ -39,7 +39,7 @@ jobs:
           tags: ayach2024/maj-server:latest
 
   deploy-to-k8s:
-    runs-on: self-hosted  # Uses your OpenStack runner
+    runs-on: self-hosted
     needs: build-and-push
     steps:
       - name: Checkout code
@@ -59,3 +59,4 @@ jobs:
           kubectl apply -f k8s/training-deployment.yaml
           kubectl apply -f k8s/prediction-service.yaml
           kubectl apply -f k8s/training-service.yaml
+          kubectl rollout restart deployment/training-deployment
