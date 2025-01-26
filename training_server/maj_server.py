@@ -1,47 +1,68 @@
-from flask import Flask, request, jsonify
-import pandas as pd
+# maj_server.py
+from flask import Flask, jsonify, request
+from joblib import load
+import numpy as np
 import os
-import subprocess
+import logging
 
+# Initialize Flask
 app = Flask(__name__)
-VOLUME_PATH = "/shared_volume"
-CSV_FILE = os.path.join(VOLUME_PATH, 'messages.csv')
-TRAINING_THRESHOLD = 30  # Adjust threshold for testing
 
-@app.route('/add_messages', methods=['POST'])
-def add_messages():
-    data = request.json
-    new_messages = data.get('messages', [])
-    new_labels = data.get('labels', [])
+# Paths
+PV_DIR = "/shared_volume/"
 
-    if len(new_messages) != len(new_labels):
-        return jsonify({"error": "Mismatched messages/labels"}), 400
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    new_data = pd.DataFrame({'MainText': new_messages, 'label': new_labels})
+# Load models from PV on startup
+try:
+    vectorizer = load(os.path.join(PV_DIR, 'vectorizer.joblib'))
+    model = load(os.path.join(PV_DIR, 'random_forest_model.joblib'))
+    label_encoder = load(os.path.join(PV_DIR, 'label_encoder.joblib'))
+    logger.info("Models loaded successfully from PV")
+except FileNotFoundError:
+    logger.error("Models not found in PV! Deploy training server first.")
+    raise
 
-    if os.path.exists(CSV_FILE):
-        existing_data = pd.read_csv(CSV_FILE)
-        updated_data = pd.concat([existing_data, new_data], ignore_index=True)
-    else:
-        updated_data = new_data
+def Clean_message(text):
+    """Identical preprocessing to training service"""
+    if not isinstance(text, str):
+        text = str(text)
+    text = text.lower()
+    text = ' '.join([word for word in text.split() if word not in stop_words])
+    text = ' '.join([lemmatizer.lemmatize(word) for word in text.split()])
+    return text
 
-    if updated_data.shape[0] >= TRAINING_THRESHOLD:
-        updated_data.to_csv(CSV_FILE, index=False)
-        try:
-            subprocess.run(['python3', 'maj_modele.py'], check=True)
-            pd.DataFrame(columns=['MainText', 'label']).to_csv(CSV_FILE, index=False)
-            return jsonify({
-                "message": f"Model retrained with {len(updated_data)} messages.",
-                "total_messages": len(updated_data)
-            })
-        except subprocess.CalledProcessError as e:
-            return jsonify({"error": f"Training failed: {str(e)}"}), 500
-    else:
-        updated_data.to_csv(CSV_FILE, index=False)
+@app.route('/predict', methods=['POST'])
+def predict():
+    """Make predictions using PV models"""
+    try:
+        data = request.json
+        text = data.get('text', '').strip()
+        
+        if not text:
+            return jsonify({"error": "Empty input"}), 400
+
+        # Preprocess and predict
+        cleaned_text = Clean_message(text)
+        X = vectorizer.transform([cleaned_text])
+        prediction = model.predict(X)
+        label = label_encoder.inverse_transform(prediction)[0]
+
         return jsonify({
-            "message": f"{len(new_messages)} messages added. {TRAINING_THRESHOLD - len(updated_data)} remaining.",
-            "total_messages": len(updated_data)
-        })
+            "prediction": label,
+            "processed_text": cleaned_text
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Prediction failed: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Kubernetes liveness probe"""
+    return jsonify({"status": "healthy"}), 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001)
+    app.run(host='0.0.0.0', port=5000)

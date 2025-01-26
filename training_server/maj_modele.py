@@ -1,3 +1,5 @@
+# maj_modele.py
+from flask import Flask, jsonify
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.ensemble import RandomForestClassifier
@@ -7,59 +9,75 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import os
+import logging
 
-nltk.download('stopwords')
-nltk.download('wordnet')
+# Initialize Flask
+app = Flask(__name__)
 
+# Paths
+LOCAL_DIR = os.path.dirname(os.path.abspath(__file__))
+PV_DIR = "/shared_volume/"
+
+# NLTK Setup
+nltk.download('stopwords', quiet=True)
+nltk.download('wordnet', quiet=True)
 lemmatizer = WordNetLemmatizer()
 stop_words = set(stopwords.words('english'))
 
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def Clean_message(text):
-    """Nettoyage du texte"""
+    """Text preprocessing identical in both services"""
     if not isinstance(text, str):
         text = str(text)
     text = text.lower()
-    
-    # Keep numbers, URLs, and critical keywords (e.g., "urgent", "free", "http")
-    text = ' '.join(
-        word for word in text.split() 
-        if (word not in stop_words) or word.isdigit() or ("http" in word)
-    )
-    
-    # Lemmatization
-    text = ' '.join(lemmatizer.lemmatize(word) for word in text.split())
+    text = ' '.join([word for word in text.split() if word not in stop_words])
+    text = ' '.join([lemmatizer.lemmatize(word) for word in text.split()])
     return text
 
-try:
-    vectorizer = load('/shared_volume/vectorizer.joblib')
-    model = load('/shared_volume/random_forest_model.joblib')
-    label_encoder = load('/shared_volume/label_encoder.joblib')
-except FileNotFoundError:
-    vectorizer = CountVectorizer(token_pattern=r'(?u)\b\w+\b')  # Allow single-character tokens
-    model = RandomForestClassifier()
-    label_encoder = LabelEncoder()
+@app.route('/train', methods=['POST'])
+def train():
+    """Train model and save to PV"""
+    try:
+        # Load existing models or initialize new ones
+        try:
+            vectorizer = load(os.path.join(LOCAL_DIR, 'vectorizer.joblib'))
+            model = load(os.path.join(LOCAL_DIR, 'random_forest_model.joblib'))
+            label_encoder = load(os.path.join(LOCAL_DIR, 'label_encoder.joblib'))
+        except FileNotFoundError:
+            vectorizer = CountVectorizer()
+            model = RandomForestClassifier()
+            label_encoder = LabelEncoder()
 
-CSV_FILE = '/shared_volume/messages.csv'
-if not os.path.exists(CSV_FILE):
-    raise FileNotFoundError("No messages found in shared volume!")
+        # Load and preprocess data
+        dataset = pd.read_csv(os.path.join(LOCAL_DIR, 'messages.csv'))
+        dataset['MainText'] = dataset['MainText'].apply(Clean_message)
+        dataset['label'] = dataset['label'].replace(
+            {'smishing': 'phishing', 'spam': 'phishing', 'malware': 'phishing'}
+        )
+        dataset = dataset[dataset['label'].isin(['ham', 'phishing'])].sample(frac=1, random_state=42)
 
-dataset = pd.read_csv(CSV_FILE)
-dataset['MainText'] = dataset['MainText'].apply(Clean_message)
+        # Train
+        X = vectorizer.fit_transform(dataset['MainText'])
+        y = label_encoder.fit_transform(dataset['label'])
+        model.fit(X, y)
 
-# Debug: Print cleaned messages
-print("Sample cleaned messages after preprocessing:")
-print(dataset['MainText'].head())
+        # Save to PV
+        dump(vectorizer, os.path.join(PV_DIR, 'vectorizer.joblib'))
+        dump(model, os.path.join(PV_DIR, 'random_forest_model.joblib'))
+        dump(label_encoder, os.path.join(PV_DIR, 'label_encoder.joblib'))
 
-dataset['label'] = dataset['label'].replace({'smishing': 'phishing', 'spam': 'phishing', 'malware': 'phishing'})
-dataset = dataset[dataset['label'].isin(['ham', 'phishing'])]
-dataset = dataset.sample(frac=1, random_state=42).reset_index(drop=True)
+        return jsonify({
+            "status": "success",
+            "message": "Model retrained and saved to PV",
+            "dataset_size": len(dataset)
+        }), 200
 
-X = vectorizer.fit_transform(dataset['MainText'])
-y = label_encoder.fit_transform(dataset['label'])
-model.fit(X, y)
+    except Exception as e:
+        logger.error(f"Training failed: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-dump(vectorizer, '/shared_volume/vectorizer.joblib')
-dump(model, '/shared_volume/random_forest_model.joblib')
-dump(label_encoder, '/shared_volume/label_encoder.joblib')
-
-print("Le modèle a été mis à jour avec succès.")
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5004)
