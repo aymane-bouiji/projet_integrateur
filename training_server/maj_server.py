@@ -59,4 +59,4 @@ def add_messages():
 
 # Démarrer l'application Flask
 if __name__ == '__main__':
-    app.run(debug=True,port="5011")
+    app.run(debug=True,port="5011",host='0.0.0.0')

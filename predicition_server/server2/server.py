@@ -10,9 +10,9 @@ app = Flask(__name__)
 VOLUME_PATH = "/shared_volume"
 
 # Define the paths to the model files in the volume
-MODEL_PATH = os.path.join(VOLUME_PATH, "random_forest_model.joblib")
-VECTORIZER_PATH = os.path.join(VOLUME_PATH, "vectorizer.joblib")
-LABEL_ENCODER_PATH = os.path.join(VOLUME_PATH, "label_encoder.joblib")
+MODEL_PATH = os.path.join("random_forest_model.joblib")
+VECTORIZER_PATH = os.path.join( "vectorizer.joblib")
+LABEL_ENCODER_PATH = os.path.join( "label_encoder.joblib")
 
 # Load the model, vectorizer, and label encoder from the volume
 try:
@@ -53,4 +53,4 @@ def home():
 
 # Start the Flask server
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5020)
