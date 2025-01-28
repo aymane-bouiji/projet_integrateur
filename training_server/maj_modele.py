@@ -1,5 +1,3 @@
-# maj_modele.py
-from flask import Flask, jsonify
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.ensemble import RandomForestClassifier
@@ -9,75 +7,83 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import os
-import logging
+import sys
 
-# Initialize Flask
-app = Flask(__name__)
+# Define paths
+LOCAL_DIR = os.path.dirname(os.path.abspath(__file__))  # Local directory of the script
+PV_DIR = "/shared_volume"                               # Persistent Volume directory
 
-# Paths
-LOCAL_DIR = os.path.dirname(os.path.abspath(__file__))
-PV_DIR = "/shared_volume/"
+# Create PV_DIR if it doesn't exist
+try:
+    os.makedirs(PV_DIR, exist_ok=True)
+    print(f"Ensuring export directory exists: {PV_DIR}")
+except PermissionError:
+    print(f"Error: No permission to create directory {PV_DIR}")
+    print("Please ensure you have the correct permissions or the directory exists")
+    sys.exit(1)
 
-# NLTK Setup
+# NLTK setup
 nltk.download('stopwords', quiet=True)
 nltk.download('wordnet', quiet=True)
 lemmatizer = WordNetLemmatizer()
 stop_words = set(stopwords.words('english'))
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 def Clean_message(text):
-    """Text preprocessing identical in both services"""
+    """Clean text identically across both services"""
     if not isinstance(text, str):
         text = str(text)
     text = text.lower()
-    text = ' '.join([word for word in text.split() if word not in stop_words])
-    text = ' '.join([lemmatizer.lemmatize(word) for word in text.split()])
+    text = ' '.join(word for word in text.split() if word not in stop_words)
+    text = ' '.join(lemmatizer.lemmatize(word) for word in text.split())
     return text
 
-@app.route('/train', methods=['POST'])
-def train():
-    """Train model and save to PV"""
-    try:
-        # Load existing models or initialize new ones
-        try:
-            vectorizer = load(os.path.join(LOCAL_DIR, 'vectorizer.joblib'))
-            model = load(os.path.join(LOCAL_DIR, 'random_forest_model.joblib'))
-            label_encoder = load(os.path.join(LOCAL_DIR, 'label_encoder.joblib'))
-        except FileNotFoundError:
-            vectorizer = CountVectorizer()
-            model = RandomForestClassifier()
-            label_encoder = LabelEncoder()
+# Check for local CSV first
+LOCAL_CSV = os.path.join(LOCAL_DIR, 'messages.csv')
+if not os.path.exists(LOCAL_CSV):
+    print(f"Error: Local messages.csv not found at {LOCAL_CSV}")
+    print("Please add it to the training directory.")
+    sys.exit(1)
 
-        # Load and preprocess data
-        dataset = pd.read_csv(os.path.join(LOCAL_DIR, 'messages.csv'))
-        dataset['MainText'] = dataset['MainText'].apply(Clean_message)
-        dataset['label'] = dataset['label'].replace(
-            {'smishing': 'phishing', 'spam': 'phishing', 'malware': 'phishing'}
-        )
-        dataset = dataset[dataset['label'].isin(['ham', 'phishing'])].sample(frac=1, random_state=42)
+# Load existing models from LOCAL_DIR with error handling
+try:
+    print("Attempting to load existing models from local directory...")
+    vectorizer = load(os.path.join(LOCAL_DIR, 'vectorizer.joblib'))
+    model = load(os.path.join(LOCAL_DIR, 'random_forest_model.joblib'))
+    label_encoder = load(os.path.join(LOCAL_DIR, 'label_encoder.joblib'))
+    print("Successfully loaded existing models")
+except FileNotFoundError:
+    print("No existing models found. Initializing new models...")
+    vectorizer = CountVectorizer()
+    model = RandomForestClassifier()
+    label_encoder = LabelEncoder()
 
-        # Train
-        X = vectorizer.fit_transform(dataset['MainText'])
-        y = label_encoder.fit_transform(dataset['label'])
-        model.fit(X, y)
+# Process data
+print("Loading and processing dataset...")
+dataset = pd.read_csv(LOCAL_CSV)
+dataset['MainText'] = dataset['MainText'].apply(Clean_message)
+dataset['label'] = dataset['label'].replace(
+    {'smishing': 'phishing', 'spam': 'phishing', 'malware': 'phishing'}
+)
+dataset = dataset[dataset['label'].isin(['ham', 'phishing'])].sample(frac=1, random_state=42)
 
-        # Save to PV
-        dump(vectorizer, os.path.join(PV_DIR, 'vectorizer.joblib'))
-        dump(model, os.path.join(PV_DIR, 'random_forest_model.joblib'))
-        dump(label_encoder, os.path.join(PV_DIR, 'label_encoder.joblib'))
+# Train model
+print("Training model...")
+X = vectorizer.fit_transform(dataset['MainText'])
+y = label_encoder.fit_transform(dataset['label'])
+model.fit(X, y)
 
-        return jsonify({
-            "status": "success",
-            "message": "Model retrained and saved to PV",
-            "dataset_size": len(dataset)
-        }), 200
-
-    except Exception as e:
-        logger.error(f"Training failed: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5004)
+# Save updated models and processed dataset to PV with error handling
+try:
+    print(f"Saving models and processed dataset to {PV_DIR}...")
+    dump(vectorizer, os.path.join(PV_DIR, 'vectorizer.joblib'))
+    dump(model, os.path.join(PV_DIR, 'random_forest_model.joblib'))
+    dump(label_encoder, os.path.join(PV_DIR, 'label_encoder.joblib'))
+    dataset.to_csv(os.path.join(PV_DIR, 'messages_processed.csv'), index=False)
+    print("Successfully saved all files to Persistent Volume!")
+except PermissionError:
+    print(f"Error: No permission to write to {PV_DIR}")
+    print("Please check directory permissions")
+    sys.exit(1)
+except Exception as e:
+    print(f"Error saving files: {str(e)}")
+    sys.exit(1)
