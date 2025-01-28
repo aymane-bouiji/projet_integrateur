@@ -7,83 +7,69 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import os
-import sys
 
-# Define paths
-LOCAL_DIR = os.path.dirname(os.path.abspath(__file__))  # Local directory of the script
-PV_DIR = "/shared_volume"                               # Persistent Volume directory
+# Télécharger les ressources nécessaires de NLTK
+nltk.download('stopwords')
+nltk.download('wordnet')
 
-# Create PV_DIR if it doesn't exist
-try:
-    os.makedirs(PV_DIR, exist_ok=True)
-    print(f"Ensuring export directory exists: {PV_DIR}")
-except PermissionError:
-    print(f"Error: No permission to create directory {PV_DIR}")
-    print("Please ensure you have the correct permissions or the directory exists")
-    sys.exit(1)
-
-# NLTK setup
-nltk.download('stopwords', quiet=True)
-nltk.download('wordnet', quiet=True)
+# Initialisation des outils de nettoyage
 lemmatizer = WordNetLemmatizer()
 stop_words = set(stopwords.words('english'))
 
 def Clean_message(text):
-    """Clean text identically across both services"""
+    """Nettoyage du texte"""
     if not isinstance(text, str):
         text = str(text)
     text = text.lower()
+    # Supprimer les stop words
     text = ' '.join(word for word in text.split() if word not in stop_words)
+    # Lemmatization
     text = ' '.join(lemmatizer.lemmatize(word) for word in text.split())
     return text
 
-# Check for local CSV first
-LOCAL_CSV = os.path.join(LOCAL_DIR, 'messages.csv')
-if not os.path.exists(LOCAL_CSV):
-    print(f"Error: Local messages.csv not found at {LOCAL_CSV}")
-    print("Please add it to the training directory.")
-    sys.exit(1)
-
-# Load existing models from LOCAL_DIR with error handling
+# Charger les fichiers existants (s'ils existent)
 try:
-    print("Attempting to load existing models from local directory...")
-    vectorizer = load(os.path.join(LOCAL_DIR, 'vectorizer.joblib'))
-    model = load(os.path.join(LOCAL_DIR, 'random_forest_model.joblib'))
-    label_encoder = load(os.path.join(LOCAL_DIR, 'label_encoder.joblib'))
-    print("Successfully loaded existing models")
+    vectorizer = load('vectorizer.joblib')
+    model = load('random_forest_model.joblib')
+    label_encoder = load('label_encoder.joblib')
 except FileNotFoundError:
-    print("No existing models found. Initializing new models...")
+    # Initialiser de nouveaux objets si les fichiers n'existent pas
     vectorizer = CountVectorizer()
     model = RandomForestClassifier()
     label_encoder = LabelEncoder()
 
-# Process data
-print("Loading and processing dataset...")
-dataset = pd.read_csv(LOCAL_CSV)
-dataset['MainText'] = dataset['MainText'].apply(Clean_message)
-dataset['label'] = dataset['label'].replace(
-    {'smishing': 'phishing', 'spam': 'phishing', 'malware': 'phishing'}
-)
-dataset = dataset[dataset['label'].isin(['ham', 'phishing'])].sample(frac=1, random_state=42)
+# Charger les messages depuis le fichier CSV
+CSV_FILE = 'messages.csv'
+if not os.path.exists(CSV_FILE):
+    print("Aucun message trouvé. Veuillez d'abord ajouter des messages via le serveur Flask.")
+    exit()
 
-# Train model
-print("Training model...")
+dataset = pd.read_csv(CSV_FILE)
+
+# Nettoyer les messages
+dataset['MainText'] = dataset['MainText'].apply(Clean_message)
+
+# Remplacer tous les autres labels par 'phishing' (au cas où il y en aurait)
+dataset['label'] = dataset['label'].replace({'smishing': 'phishing', 'spam': 'phishing', 'malware': 'phishing'})
+
+# Filtrer pour ne garder que les labels 'ham' et 'phishing'
+dataset = dataset[dataset['label'].isin(['ham', 'phishing'])]
+
+# Mélanger les données du dataset
+dataset = dataset.sample(frac=1, random_state=42).reset_index(drop=True)
+
+# Vectoriser les SMS
 X = vectorizer.fit_transform(dataset['MainText'])
+
+# Encoder les labels
 y = label_encoder.fit_transform(dataset['label'])
+
+# Ré-entraîner le modèle
 model.fit(X, y)
 
-# Save updated models and processed dataset to PV with error handling
-try:
-    print(f"Saving models and processed dataset to {PV_DIR}...")
-    dump(vectorizer, os.path.join(PV_DIR, 'vectorizer.joblib'))
-    dump(model, os.path.join(PV_DIR, 'random_forest_model.joblib'))
-    dump(label_encoder, os.path.join(PV_DIR, 'label_encoder.joblib'))
-    dataset.to_csv(os.path.join(PV_DIR, 'messages_processed.csv'), index=False)
-    print("Successfully saved all files to Persistent Volume!")
-except PermissionError:
-    print(f"Error: No permission to write to {PV_DIR}")
-    print("Please check directory permissions")
-    sys.exit(1)
-except Exception as e:
-    print(f"Error saving files: {str(e)}")
-    sys.exit(1)
+# Sauvegarder les fichiers mis à jour
+dump(vectorizer, 'vectorizer.joblib')
+dump(model, 'random_forest_model.joblib')
+dump(label_encoder, 'label_encoder.joblib')
+
+print("Le modèle a été mis à jour avec succès.")
