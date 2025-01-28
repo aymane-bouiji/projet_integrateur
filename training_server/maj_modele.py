@@ -7,6 +7,7 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import os
+import shutil
 
 # Télécharger les ressources nécessaires de NLTK
 nltk.download('stopwords')
@@ -67,9 +68,25 @@ y = label_encoder.fit_transform(dataset['label'])
 # Ré-entraîner le modèle
 model.fit(X, y)
 
-# Sauvegarder les fichiers mis à jour
+# Sauvegarder les fichiers localement d'abord
 dump(vectorizer, 'vectorizer.joblib')
 dump(model, 'random_forest_model.joblib')
 dump(label_encoder, 'label_encoder.joblib')
 
-print("Le modèle a été mis à jour avec succès.")
+# Tentative de copie vers le volume partagé
+SHARED_VOLUME_PATH = '/shared_volume'
+try:
+    model_files = ['vectorizer.joblib', 'random_forest_model.joblib', 'label_encoder.joblib']
+    for file in model_files:
+        shared_file_path = os.path.join(SHARED_VOLUME_PATH, file)
+        if os.path.exists(SHARED_VOLUME_PATH):  # Only try to copy if the shared volume exists
+            shutil.copy2(file, shared_file_path)
+            print(f"Fichier {file} copié vers le volume partagé avec succès.")
+        else:
+            print(f"Le volume partagé n'est pas accessible. Les fichiers sont sauvegardés localement uniquement.")
+            break
+    
+    print("Le modèle a été mis à jour avec succès.")
+except (PermissionError, OSError) as e:
+    print(f"Impossible de copier vers le volume partagé: {str(e)}")
+    print("Les fichiers ont été sauvegardés localement uniquement.")

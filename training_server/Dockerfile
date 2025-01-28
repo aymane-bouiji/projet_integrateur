@@ -1,14 +1,16 @@
-FROM python:3.9
+FROM python:3.9-slim
+
 WORKDIR /app
-COPY . .
 
-# Install dependencies
-RUN pip install --no-cache-dir -r dependencies.txt
+# Install required packages
+COPY dependencies.txt .
+RUN pip install -r dependencies.txt
 
-# Download NLTK data
-RUN python3 -m nltk.downloader stopwords wordnet
+# Copy your Python files
+COPY maj_server.py .
+COPY maj_modele.py .
 
-# Expose Flask port
-EXPOSE 5001
+# Set permissions for the app directory
+RUN chmod -R 777 /app
 
 CMD ["python3", "maj_server.py"]
